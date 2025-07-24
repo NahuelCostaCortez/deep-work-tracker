@@ -54,6 +54,9 @@ A GitHub-like terminal visualization and timer for tracking your deep work sessi
      ```bash
      dwt
      ```
+    First time you use it you're gonna be prompted with a message saying something like "This shorcut cannot be run because this action is a scripting action and your Shorcuts security settings don't allow you to run scripting actions.
+
+    That's ok! You just have to Open Preferences and mark the checkbox "Allow Running Scripts". Also, when you run it again open Settings -> Privacy and Security -> Accesibility and activate the Terminal checkbox
 
 You're ready to go!
 
