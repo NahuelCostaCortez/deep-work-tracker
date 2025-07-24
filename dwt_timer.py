@@ -171,7 +171,7 @@ class DeepWorkTimer:
             with open(data_file, 'w') as f:
                 json.dump(data, f, indent=2)
             
-            print(f"📝 Session logged: {duration_minutes} minutes")
+            print(f"\r\033[K📝 Session logged: {duration_minutes} minutes")
             return True
             
         except Exception as e:
@@ -216,7 +216,7 @@ class DeepWorkTimer:
                 elapsed = time.time() - start_time - paused_duration
                 remaining = max(0, total_seconds - elapsed)
                 if remaining <= 0:
-                    print(f"\rGreat job!                                          ")
+                    print(f"\r\033[KGreat job!")
                     print()
                     # Play notification sound
                     try:
@@ -240,8 +240,11 @@ class DeepWorkTimer:
                 if select.select([sys.stdin], [], [], 0)[0]:
                     char = sys.stdin.read(1).lower()
                     if char == 's':
-                        print(f"\n⏹️  Stopping session...")
-                        return self.handle_stop_during_countdown(remaining)
+                        print('\r\033[K', end='')  # Clear the timer line
+                        print("⏸️  Session paused.")  # Print the pause message
+                        print('\r\033[K')  # Clear the next line and move the cursor to the left
+                        self.run_shortcut("stop deep")
+                        sys.exit(1)
                     elif char == 'q':
                         return self.handle_quit_during_countdown(remaining, start_time, paused_duration)
 
@@ -255,51 +258,9 @@ class DeepWorkTimer:
     
     def handle_stop_during_countdown(self, remaining):
         """Handle stop command during countdown"""
-        print()
-        print("What would you like to do?")
-        print("1. Pause (resume later with 'continue')")
-        print("2. End session completely")
-        
-        try:
-            choice = input("\nEnter choice (1-2): ").strip()
-            
-            if choice == '1':
-                # Pause session
-                print("⏸️  Session paused.")
-                self.run_shortcut("stop deep")
-                return False
-                
-            elif choice == '2':
-                # End session completely
-                end_time = datetime.now()
-                actual_start = datetime.fromtimestamp(self.state['start_time'])
-                
-                # Calculate actual work time
-                total_elapsed = time.time() - self.state['start_time']
-                work_time = total_elapsed - self.state['paused_duration']
-                work_minutes = max(1, int(work_time / 60))
-                
-                # Run stop shortcut
-                self.run_shortcut("stop deep")
-                
-                # Only log if session was 10+ minutes
-                if work_minutes >= 10:
-                    # Log the partial session
-                    self.add_session_to_data(actual_start, end_time, work_minutes)
-                    print(f"🏁 Session ended. Great work! Logged {work_minutes} minutes.")
-                else:
-                    print(f"🏁 Session ended. Too short to log ({work_minutes} min < 10 min minimum).")
-                
-                self.clear_state()
-                return "ended"
-                
-            else:
-                print("❌ Invalid choice. Continuing session...")
-                return "continue"
-                
-        except KeyboardInterrupt:
-            print("\n↩️  Continuing session...")
-            return "continue"
+        print("\n⏸️  Session paused.")
+        self.run_shortcut("stop deep")
+        return False
     
     def handle_quit_during_countdown(self, remaining, start_time, paused_duration):
         """Handle quit command during countdown"""
@@ -309,14 +270,15 @@ class DeepWorkTimer:
         self.run_shortcut("stop deep")
         
         self.clear_state()
-        print(f"🚪 Session quit. No time logged.")
+        print(f"\r\033[K🚪 Session quit. No time logged.")
+        print('\r\033[K', end='')  # Clear the line again and leave cursor at start
         return "ended"
     
     def start_session(self):
         """Start a new deep work session"""
         if self.state.get('active'):
             print("❌ A session is already active. Use 'continue' to resume or 'stop' to end it.")
-            return
+            sys.exit(1)
         
         # Run the shortcut
         if not self.run_shortcut("start deep"):
@@ -371,124 +333,114 @@ class DeepWorkTimer:
             state['paused_at'] = time.time()
             state['remaining'] = remaining
             self.save_state(state)
+            print("Session paused. Use 'continue' to resume.")
+            sys.exit(1)
     
     def continue_session(self):
-        """Continue a paused session"""
+        """Continue a paused session or resume the timer UI if already running"""
         if not self.state.get('active'):
             print("❌ No active session to continue. Use 'start' to begin a new session.")
             sys.exit(1)
         
         if not self.state.get('paused_at'):
-            print("❌ Session is already running. Use 'stop' to pause it.")
-            sys.exit(1)
-        
-        print("▶️  Continuing deep work session...")
-        
-        # Run start shortcut when continuing
-
-
-        self.run_shortcut("start deep")
-        
-        # Calculate paused duration
-        pause_duration = time.time() - self.state['paused_at']
-        total_paused = self.state['paused_duration'] + pause_duration
-        
-        # Update state
-        state = self.state.copy()
-        state['paused_duration'] = total_paused
-        state['paused_at'] = None
-        self.save_state(state)
-        
-        remaining = state.get('remaining', state['duration'])
-        print(f"⏰ Remaining time: {self.format_time(remaining)}")
-        print()
-        
-        # Continue countdown
-        result = self.show_countdown(state['duration'], state['start_time'], total_paused)
-        
-        if result == True:
-            # Session completed successfully
-            end_time = datetime.now()
-            actual_start = datetime.fromtimestamp(state['start_time'])
-            
-            # Run stop shortcut
-            self.run_shortcut("stop deep")
-            
-            # Log the session
-            self.add_session_to_data(actual_start, end_time, 60)  # 60 minutes
-            
-            self.clear_state()
-            print("🎉 Session completed successfully!")
-        elif result == "ended":
-            # Session was ended during countdown (already handled in method)
-            pass
-        elif result == "continue":
-            # User chose to continue, restart countdown loop
-            self.continue_session()
+            # Session is running, resume the timer UI
+            print("▶️  Resuming active session...")
+            self.run_shortcut("start deep")  # Call the shortcut when continuing
+            remaining = self.state['duration'] - (time.time() - self.state['start_time'] - self.state['paused_duration'])
+            print(f"⏰ Remaining time: {self.format_time(remaining)}")
+            print()
+            result = self.show_countdown(self.state['duration'], self.state['start_time'], self.state['paused_duration'])
+            if result == True:
+                # Session completed successfully
+                end_time = datetime.now()
+                actual_start = datetime.fromtimestamp(self.state['start_time'])
+                self.run_shortcut("stop deep")
+                self.add_session_to_data(actual_start, end_time, 60)  # 60 minutes
+                self.clear_state()
+                print("🎉 Session completed successfully!")
+            elif result == "ended":
+                pass
+            elif result == "continue":
+                self.continue_session()
+            else:
+                new_remaining = self.state['duration'] - (time.time() - self.state['start_time'] - self.state['paused_duration'])
+                self.state['paused_at'] = time.time()
+                self.state['remaining'] = new_remaining
+                self.save_state(self.state)
+            sys.exit(0)
         else:
-            # Session was paused again
-            new_remaining = state['duration'] - (time.time() - state['start_time'] - total_paused)
-            state['paused_at'] = time.time()
-            state['remaining'] = new_remaining
+            # Session is paused, continue as before
+            print("▶️  Continuing deep work session...")
+            
+            # Run start shortcut when continuing
+
+
+            self.run_shortcut("start deep")
+            
+            # Calculate paused duration
+            pause_duration = time.time() - self.state['paused_at']
+            total_paused = self.state['paused_duration'] + pause_duration
+            
+            # Update state
+            state = self.state.copy()
+            state['paused_duration'] = total_paused
+            state['paused_at'] = None
             self.save_state(state)
+            
+            remaining = state.get('remaining', state['duration'])
+            print(f"⏰ Remaining time: {self.format_time(remaining)}")
+            print()
+            
+            # Continue countdown
+            result = self.show_countdown(state['duration'], state['start_time'], total_paused)
+            
+            if result == True:
+                # Session completed successfully
+                end_time = datetime.now()
+                actual_start = datetime.fromtimestamp(state['start_time'])
+                
+                # Run stop shortcut
+                self.run_shortcut("stop deep")
+                
+                # Log the session
+                self.add_session_to_data(actual_start, end_time, 60)  # 60 minutes
+                
+                self.clear_state()
+                print("🎉 Session completed successfully!")
+            elif result == "ended":
+                # Session was ended during countdown (already handled in method)
+                pass
+            elif result == "continue":
+                # User chose to continue, restart countdown loop
+                self.continue_session()
+            else:
+                # Session was paused again
+                new_remaining = state['duration'] - (time.time() - state['start_time'] - total_paused)
+                state['paused_at'] = time.time()
+                state['remaining'] = new_remaining
+                self.save_state(state)
     
     def stop_session(self):
         """Stop/pause the current session"""
         if not self.state.get('active'):
             print("❌ No active session to stop.")
             sys.exit(1)
-        
-        print("⏹️  Stopping session...")
-        print()
-        print("What would you like to do?")
-        print("1. Pause (resume later with 'continue')")
-        print("2. End session completely")
-        print("3. Cancel (keep session running)")
-        
-        choice = input("\nEnter choice (1-3): ").strip()
-        
-        if choice == '1':
-            # Pause session
-            if not self.state.get('paused_at'):
-                state = self.state.copy()
-                state['paused_at'] = time.time()
-                remaining = state['duration'] - (time.time() - state['start_time'] - state['paused_duration'])
-                state['remaining'] = remaining
-                self.save_state(state)
-                print(f"⏸️  Session paused. Resume with 'continue'")
-                print(f"⏰ Time remaining: {self.format_time(remaining)}")
-            else:
-                print("ℹ️  Session is already paused.")
-                
-        elif choice == '2':
-            # End session completely
-            end_time = datetime.now()
-            actual_start = datetime.fromtimestamp(self.state['start_time'])
-            
-            # Calculate actual work time (excluding paused time)
-            total_elapsed = time.time() - self.state['start_time']
-            work_time = total_elapsed - self.state['paused_duration']
-            if self.state.get('paused_at'):
-                # Currently paused, don't count current pause time
-                current_pause = time.time() - self.state['paused_at']
-                work_time -= current_pause
-            
-            work_minutes = max(1, int(work_time / 60))  # At least 1 minute
-            
-            # Run stop shortcut
+
+        # Immediately pause session and call shortcut
+        if not self.state.get('paused_at'):
+            state = self.state.copy()
+            state['paused_at'] = time.time()
+            remaining = state['duration'] - (time.time() - state['start_time'] - state['paused_duration'])
+            state['remaining'] = remaining
+            self.save_state(state)
+            print('\r\033[K', end='')  # Clear the timer line
+            print("⏸️  Session paused.")
+            print('\r\033[K')  # Clear the next line and move the cursor to the left
             self.run_shortcut("stop deep")
-            
-            # Log the partial session
-            self.add_session_to_data(actual_start, end_time, work_minutes)
-            
-            self.clear_state()
-            print(f"🏁 Session ended. Great work! Logged {work_minutes} minutes.")
-            
-        elif choice == '3':
-            print("↩️  Continuing session...")
-            return
+            sys.exit(1)
         else:
-            print("❌ Invalid choice. Session continues...")
+            print("ℹ️  Session is already paused.")
+            sys.exit(1)
     
     def status(self):
         """Show current session status"""

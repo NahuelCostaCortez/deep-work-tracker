@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# Deep Work Tracker - Interactive App
+# Usage: dwt-start
+
+# Resolve symlinks and get the actual script directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$SCRIPT_DIR/$SOURCE"
+done
+SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+cd "$SCRIPT_DIR"
+
+# First, show the progress visualization
+python3 "$SCRIPT_DIR/deep_work_tracker.py"
+
+echo ""
+echo -e "\033[1;34mTimer Commands\033[0m"
+echo "──────────────────────────────────────────"
+echo "start     - Start a new 1-hour deep work session"
+echo "status    - Check current session status"
+echo "continue  - Resume a paused session"
+echo "stop      - Pause or end current session"
+echo "settings  - Change daily goal and other settings"
+echo "exit      - Exit the app"
+echo ""
+
+while true; do
+    read -p "Enter your choice (start/status/continue/stop/settings/exit): " choice
+    
+    case $choice in
+        start)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" start
+            if [ $? -eq 0 ]; then
+                break
+            fi
+            ;;
+        status)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" status
+            ;;
+        continue)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" continue
+            if [ $? -eq 0 ]; then
+                break
+            fi
+            ;;
+        stop)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" stop
+            if [ $? -eq 0 ]; then
+                break
+            fi
+            ;;
+        settings)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" settings
+            ;;
+        exit)
+            echo "Bye! 👋"
+            break
+            ;;
+        *)
+            echo "❌ Invalid choice. Please enter start/status/continue/stop/settings/exit"
+            ;;
+    esac
+done

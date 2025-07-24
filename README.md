@@ -42,6 +42,9 @@ A GitHub-like terminal visualization and timer for tracking your deep work sessi
 4. **Make the Tracker Globally Available**
    - Run the provided setup script to make the `dwt` command available globally:
      ```bash
+	 chmod 777 install_dwt.sh
+     ```
+	 ```bash
      ./install_dwt.sh
      ```
    - This will create a symlink in `~/.local/bin` and ensure it is in your PATH.
