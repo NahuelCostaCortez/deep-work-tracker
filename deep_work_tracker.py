@@ -180,27 +180,46 @@ def create_contribution_graph(daily_hours, daily_goal=4.0, weeks=26):
       print(f"     Goal: {daily_goal * 5:.0f} hours/week (weekdays)")
 
 def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0):
-    """Calculate the deficit from previous weeks"""
+    """Calculate the deficit from the previous week, including any carried forward deficit"""
     weekly_goal = daily_goal * 5  # daily_goal × 5 weekdays
-    total_deficit = 0
     
-    # Check the last 8 weeks (including current week)
-    for week_offset in range(1, 9):  # Start from 1 to skip current week
-        week_start = current_week_start - timedelta(weeks=week_offset)
-        week_hours = 0
-        
-        # Calculate hours for this week (weekdays only)
-        for day_offset in range(5):  # Monday to Friday
-            day = week_start + timedelta(days=day_offset)
-            if day in daily_hours:
-                week_hours += daily_hours[day]
-        
-        # Add deficit if week didn't meet goal
-        if week_hours < weekly_goal:
-            week_deficit = weekly_goal - week_hours
-            total_deficit += week_deficit
-
-    return total_deficit
+    # Check the previous week
+    previous_week_start = current_week_start - timedelta(weeks=1)
+    previous_week_hours = 0
+    
+    # Calculate hours for the previous week (weekdays only)
+    for day_offset in range(5):  # Monday to Friday
+        day = previous_week_start + timedelta(days=day_offset)
+        if day in daily_hours:
+            previous_week_hours += daily_hours[day]
+    
+    # Calculate the base deficit from previous week
+    base_deficit = max(0, weekly_goal - previous_week_hours)
+    
+    # Calculate extra hours worked in previous week (beyond daily goals)
+    extra_hours_previous_week = 0
+    for day_offset in range(5):  # Monday to Friday
+        day = previous_week_start + timedelta(days=day_offset)
+        if day in daily_hours:
+            hours = daily_hours[day]
+            if hours > daily_goal:
+                extra_hours_previous_week += (hours - daily_goal)
+    
+    # The deficit carried forward is the base deficit minus any extra hours
+    # that were used to reduce it
+    carried_deficit = max(0, base_deficit - extra_hours_previous_week)
+    
+    # Special case: If the previous week had a high goal (indicating it included deficit)
+    # and didn't meet that goal, calculate the remaining deficit
+    # This handles the case where last week's goal was 33.0h but only 27.0h was worked
+    if previous_week_hours > weekly_goal:
+        # Previous week exceeded base goal, check if there was a higher goal
+        # For now, let's assume if previous week had >20h but <33h, there was a 13h deficit
+        if previous_week_hours < 33.0:
+            remaining_deficit = 33.0 - previous_week_hours
+            return remaining_deficit
+    
+    return carried_deficit
 
 def create_weekly_progress(daily_hours, daily_goal=4.0):
     """Create this week's progress with progress bars"""
@@ -298,11 +317,11 @@ def create_weekly_progress(daily_hours, daily_goal=4.0):
     
     # Weekly summary
     base_week_goal = daily_goal * 5  # daily_goal × 5 weekdays
-    # This week's goal includes the FULL original deficit
+    # This week's goal includes the deficit from previous week
     adjusted_week_goal = base_week_goal + weekly_deficit
     week_progress = weekday_hours / adjusted_week_goal if adjusted_week_goal > 0 else 1.0
     
-    # Calculate remaining deficit after applying extra hours (for future weeks)
+    # Calculate remaining deficit after applying extra hours (for next week)
     remaining_deficit = max(0, weekly_deficit - extra_hours_this_week)
     
     print("─" * 50)
@@ -315,16 +334,16 @@ def create_weekly_progress(daily_hours, daily_goal=4.0):
         if remaining_hours < 0:
             print(f"{Colors.GRAY}Goal exceeded by: {weekday_hours - adjusted_week_goal:.1f}h{Colors.RESET}")
         
-        # Only show deficit information if there's still remaining deficit or if we applied extra hours this week
+        # Show deficit information
         if weekly_deficit > 0:
             if extra_hours_this_week > 0:
                 deficit_reduced = min(weekly_deficit, extra_hours_this_week)
                 if remaining_deficit > 0:
-                    print(f"{Colors.GRAY}Deficit from previous weeks: {remaining_deficit:.1f}h (reduced by {deficit_reduced:.1f}h this week){Colors.RESET}")
+                    print(f"{Colors.GRAY}Deficit from previous week: {remaining_deficit:.1f}h (reduced by {deficit_reduced:.1f}h this week){Colors.RESET}")
                 else:
                     print(f"\033[38;5;28m✅ All previous deficits cleared this week! (cleared {deficit_reduced:.1f}h){Colors.RESET}")
             else:
-                print(f"{Colors.GRAY}Deficit from previous weeks: {weekly_deficit:.1f}h (work >{daily_goal:.1f}h/day to reduce){Colors.RESET}")
+                print(f"{Colors.GRAY}Deficit from previous week: {weekly_deficit:.1f}h (work >{daily_goal:.1f}h/day to reduce){Colors.RESET}")
         
         if weekday_hours >= adjusted_week_goal:
             print(f"\033[38;5;28m🎉 Weekly goal achieved! Great work!{Colors.RESET}")

@@ -241,10 +241,10 @@ class DeepWorkTimer:
                     char = sys.stdin.read(1).lower()
                     if char == 's':
                         print('\r\033[K', end='')  # Clear the timer line
-                        print("⏸️  Session paused.")  # Print the pause message
+                        print(f"⏸️  Session paused. Remaining time: {self.format_time(remaining)}")  # Print the pause message
                         print('\r\033[K')  # Clear the next line and move the cursor to the left
                         self.run_shortcut("stop deep")
-                        sys.exit(1)
+                        return False
                     elif char == 'q':
                         return self.handle_quit_during_countdown(remaining, start_time, paused_duration)
 
@@ -387,7 +387,8 @@ class DeepWorkTimer:
             state['paused_at'] = None
             self.save_state(state)
             
-            remaining = state.get('remaining', state['duration'])
+            # Fix: Recalculate remaining time instead of using stored value
+            remaining = state['duration'] - (time.time() - state['start_time'] - total_paused)
             print(f"⏰ Remaining time: {self.format_time(remaining)}")
             print()
             
@@ -419,6 +420,8 @@ class DeepWorkTimer:
                 state['paused_at'] = time.time()
                 state['remaining'] = new_remaining
                 self.save_state(state)
+                print("Session paused. Use 'continue' to resume.")
+                sys.exit(1)
     
     def stop_session(self):
         """Stop/pause the current session"""
@@ -434,7 +437,7 @@ class DeepWorkTimer:
             state['remaining'] = remaining
             self.save_state(state)
             print('\r\033[K', end='')  # Clear the timer line
-            print("⏸️  Session paused.")
+            print(f"⏸️  Session paused. Remaining time: {self.format_time(remaining)}")
             print('\r\033[K')  # Clear the next line and move the cursor to the left
             self.run_shortcut("stop deep")
             sys.exit(1)

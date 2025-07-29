@@ -19,7 +19,7 @@ A GitHub-like terminal visualization and timer for tracking your deep work sessi
    - Download this project folder to your computer, or clone it using:
      ```bash
      git clone <repo-url>
-     cd terminal
+	 cd deep-work-tracker
      ```
 
 2. **Install Python (if not already installed)**
