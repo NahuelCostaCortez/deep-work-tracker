@@ -100,6 +100,32 @@ class DeepWorkTimer:
         except KeyboardInterrupt:
             print("\n❌ Goal change cancelled.")
     
+    def reset_deficit(self):
+        """Reset deficit tracking - discard all previous deficits"""
+        print(f"\n🔄 Reset Deficit Tracking")
+        print("This will discard all previous deficit hours and start fresh from today.")
+        print("Your historical data will remain unchanged, but deficit calculations")
+        print("will only consider sessions from today forward.")
+        print()
+        
+        try:
+            confirm = input("Are you sure you want to reset deficit tracking? (y/N): ").strip().lower()
+            
+            if confirm != 'y':
+                print("❌ Reset cancelled.")
+                return
+                
+            # Set reset date to today
+            config = self.config.copy()
+            config['deficit_reset_date'] = datetime.now().date().isoformat()
+            self.save_config(config)
+            
+            print("✅ Deficit tracking reset! All previous deficits have been discarded.")
+            print("📅 New tracking starts from today.")
+                
+        except KeyboardInterrupt:
+            print("\n❌ Reset cancelled.")
+    
     def run_shortcut(self, name):
         """Run a macOS shortcut"""
         try:
@@ -481,6 +507,7 @@ def main():
         print("  continue - Continue paused session")
         print("  status   - Show session status")
         print("  settings - Change daily goal and settings")
+        print("  reset    - Reset deficit tracking (discard previous deficits)")
         return
     
     timer = DeepWorkTimer()
@@ -496,6 +523,8 @@ def main():
         timer.status()
     elif command == 'settings':
         timer.set_daily_goal()
+    elif command == 'reset':
+        timer.reset_deficit()
     else:
         print(f"❌ Unknown command: {command}")
 

@@ -24,11 +24,12 @@ echo "status    - Check current session status"
 echo "continue  - Resume a paused session"
 echo "stop      - Pause or end current session"
 echo "settings  - Change daily goal and other settings"
+echo "reset     - Reset deficit tracking (discard previous deficits)"
 echo "exit      - Exit the app"
 echo ""
 
 while true; do
-    read -p "Enter your choice (start/status/continue/stop/settings/exit): " choice
+    read -p "Enter your choice (start/status/continue/stop/settings/reset/exit): " choice
     
     case $choice in
         start)
@@ -60,12 +61,16 @@ while true; do
             echo ""
             python3 "$SCRIPT_DIR/dwt_timer.py" settings
             ;;
+        reset)
+            echo ""
+            python3 "$SCRIPT_DIR/dwt_timer.py" reset
+            ;;
         exit)
             echo "Bye! 👋"
             break
             ;;
         *)
-            echo "❌ Invalid choice. Please enter start/status/continue/stop/settings/exit"
+            echo "❌ Invalid choice. Please enter start/status/continue/stop/settings/reset/exit"
             ;;
     esac
 done

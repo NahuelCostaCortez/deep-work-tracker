@@ -179,7 +179,7 @@ def create_contribution_graph(daily_hours, daily_goal=4.0, weeks=26):
     else:
       print(f"     Goal: {daily_goal * 5:.0f} hours/week (weekdays)")
 
-def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0):
+def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0, config=None):
     """Calculate the deficit from the previous week, including any carried forward deficit"""
     weekly_goal = daily_goal * 5  # daily_goal × 5 weekdays
     
@@ -187,6 +187,17 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0):
     # Don't carry forward any deficit
     if not daily_hours:
         return 0
+    
+    # Check if deficit tracking was reset
+    if config and 'deficit_reset_date' in config:
+        try:
+            reset_date = datetime.fromisoformat(config['deficit_reset_date']).date()
+            # If the current week started before or on the reset date, no deficit
+            if current_week_start <= reset_date:
+                return 0
+        except (ValueError, TypeError):
+            # Invalid reset date format, ignore it
+            pass
     
     # Check the previous week
     previous_week_start = current_week_start - timedelta(weeks=1)
@@ -226,7 +237,7 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0):
     
     return carried_deficit
 
-def create_weekly_progress(daily_hours, daily_goal=4.0):
+def create_weekly_progress(daily_hours, daily_goal=4.0, config=None):
     """Create this week's progress with progress bars"""
     today = datetime.now().date()
     
@@ -235,7 +246,7 @@ def create_weekly_progress(daily_hours, daily_goal=4.0):
     week_start = today - timedelta(days=days_since_monday)
     
     # Calculate deficit from previous weeks
-    weekly_deficit = calculate_weekly_deficit(daily_hours, week_start, daily_goal)
+    weekly_deficit = calculate_weekly_deficit(daily_hours, week_start, daily_goal, config)
     
     print(f"\n{Colors.BOLD}This Week's Progress{Colors.RESET}")
     print("─" * 50)
@@ -400,7 +411,7 @@ def main():
     
     # Display visualizations
     create_contribution_graph(daily_hours, daily_goal)
-    create_weekly_progress(daily_hours, daily_goal)
+    create_weekly_progress(daily_hours, daily_goal, config)
     show_stats(daily_hours)
     
     #print(f"\n{Colors.GRAY}Data extracted: {data.get('extracted', 'Unknown')}{Colors.RESET}")
