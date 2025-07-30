@@ -183,6 +183,11 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0):
     """Calculate the deficit from the previous week, including any carried forward deficit"""
     weekly_goal = daily_goal * 5  # daily_goal × 5 weekdays
     
+    # If there's no historical data at all, this is likely a fresh install
+    # Don't carry forward any deficit
+    if not daily_hours:
+        return 0
+    
     # Check the previous week
     previous_week_start = current_week_start - timedelta(weeks=1)
     previous_week_hours = 0
