@@ -33,3 +33,7 @@ else
 fi
 
 echo "Installation complete! You can now run 'dwt' from any directory." 
+
+# Instructions for zsh users (uncomment if needed)
+# echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+# source ~/.zshrc

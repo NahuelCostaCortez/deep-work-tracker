@@ -8,6 +8,8 @@ import os
 
 # Configuration file
 CONFIG_FILE = os.path.expanduser("~/.dwt_config.json")
+# Weekly goals tracking file
+WEEKLY_GOALS_FILE = "dwt_weekly_goals.json"
 
 # ANSI color codes
 class Colors:
@@ -30,6 +32,41 @@ def load_config():
             pass
     # Default configuration
     return {"daily_goal": 4.0}
+
+def load_weekly_goals():
+    """Load weekly goals tracking data from file"""
+    if os.path.exists(WEEKLY_GOALS_FILE):
+        try:
+            with open(WEEKLY_GOALS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    # Default empty tracking
+    return {}
+
+def save_weekly_goal(week_start_date, actual_goal):
+    """Save the actual weekly goal used for a specific week"""
+    try:
+        weekly_goals = load_weekly_goals()
+        week_key = week_start_date.isoformat()
+        
+        # Only save if this week's goal isn't already recorded or if it's different
+        if week_key not in weekly_goals or weekly_goals[week_key] != actual_goal:
+            weekly_goals[week_key] = actual_goal
+            
+            with open(WEEKLY_GOALS_FILE, 'w') as f:
+                json.dump(weekly_goals, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Could not save weekly goal: {e}")
+
+def get_previous_week_goal(current_week_start, daily_goal=4.0):
+    """Get the actual goal that was used for the previous week"""
+    previous_week_start = current_week_start - timedelta(weeks=1)
+    weekly_goals = load_weekly_goals()
+    week_key = previous_week_start.isoformat()
+    
+    # Return the stored goal or fall back to base weekly goal
+    return weekly_goals.get(week_key, daily_goal * 5)
 
 def load_data():
     """Load the deep work data from JSON file, auto-create if missing"""
@@ -180,9 +217,7 @@ def create_contribution_graph(daily_hours, daily_goal=4.0, weeks=26):
       print(f"     Goal: {daily_goal * 5:.0f} hours/week (weekdays)")
 
 def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0, config=None):
-    """Calculate the deficit from the previous week, including any carried forward deficit"""
-    weekly_goal = daily_goal * 5  # daily_goal × 5 weekdays
-    
+    """Calculate the deficit from the previous week using stored weekly goals"""
     # If there's no historical data at all, this is likely a fresh install
     # Don't carry forward any deficit
     if not daily_hours:
@@ -199,6 +234,9 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0, co
             # Invalid reset date format, ignore it
             pass
     
+    # Get the actual goal that was used for the previous week
+    previous_week_actual_goal = get_previous_week_goal(current_week_start, daily_goal)
+    
     # Check the previous week
     previous_week_start = current_week_start - timedelta(weeks=1)
     previous_week_hours = 0
@@ -209,33 +247,10 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0, co
         if day in daily_hours:
             previous_week_hours += daily_hours[day]
     
-    # Calculate the base deficit from previous week
-    base_deficit = max(0, weekly_goal - previous_week_hours)
+    # Calculate the deficit: difference between actual goal and hours worked
+    deficit = max(0, previous_week_actual_goal - previous_week_hours)
     
-    # Calculate extra hours worked in previous week (beyond daily goals)
-    extra_hours_previous_week = 0
-    for day_offset in range(5):  # Monday to Friday
-        day = previous_week_start + timedelta(days=day_offset)
-        if day in daily_hours:
-            hours = daily_hours[day]
-            if hours > daily_goal:
-                extra_hours_previous_week += (hours - daily_goal)
-    
-    # The deficit carried forward is the base deficit minus any extra hours
-    # that were used to reduce it
-    carried_deficit = max(0, base_deficit - extra_hours_previous_week)
-    
-    # Special case: If the previous week had a high goal (indicating it included deficit)
-    # and didn't meet that goal, calculate the remaining deficit
-    # This handles the case where last week's goal was 33.0h but only 27.0h was worked
-    if previous_week_hours > weekly_goal:
-        # Previous week exceeded base goal, check if there was a higher goal
-        # For now, let's assume if previous week had >20h but <33h, there was a 13h deficit
-        if previous_week_hours < 33.0:
-            remaining_deficit = 33.0 - previous_week_hours
-            return remaining_deficit
-    
-    return carried_deficit
+    return deficit
 
 def create_weekly_progress(daily_hours, daily_goal=4.0, config=None):
     """Create this week's progress with progress bars"""
@@ -321,22 +336,21 @@ def create_weekly_progress(daily_hours, daily_goal=4.0, config=None):
         
         print(f"{day_name} {current_date.strftime('%m/%d')} │{bar}│ {hours:4.1f}h / {goal_text}{deficit_indicator}{today_marker}")
     
-    # Calculate extra hours worked this week (beyond daily goals)
-    extra_hours_this_week = 0
-    for i in range(7):
-        current_date = week_start + timedelta(days=i)
-        is_weekday = i < 5  # Monday to Friday
-        if is_weekday and daily_goal > 0:
-            hours = daily_hours.get(current_date, 0)
-            if hours > daily_goal:
-                extra_hours_this_week += (hours - daily_goal)
-    
     # Weekly summary
     base_week_goal = daily_goal * 5  # daily_goal × 5 weekdays
+    if daily_goal > 0:
+        # Count any hours beyond the weekday baseline (including weekends)
+        extra_hours_this_week = max(0, total_week_hours - base_week_goal)
+    else:
+        extra_hours_this_week = 0
     # This week's goal includes the deficit from previous week
     adjusted_week_goal = base_week_goal + weekly_deficit
-    week_progress = weekday_hours / adjusted_week_goal if adjusted_week_goal > 0 else 1.0
-    
+
+    # Save this week's actual goal for future deficit calculations
+    save_weekly_goal(week_start, adjusted_week_goal)
+
+    week_progress = total_week_hours / adjusted_week_goal if adjusted_week_goal > 0 else 1.0
+
     # Calculate remaining deficit after applying extra hours (for next week)
     remaining_deficit = max(0, weekly_deficit - extra_hours_this_week)
     
@@ -345,10 +359,10 @@ def create_weekly_progress(daily_hours, daily_goal=4.0, config=None):
     if daily_goal == 0:
         print(f"{Colors.BOLD}🏖️  Vacation mode: No weekly goal set{Colors.RESET}")
     else:
-        print(f"{Colors.BOLD}Week Total: {weekday_hours:.1f}h / {adjusted_week_goal:.1f}h ({week_progress*100:.1f}%) - Weekdays{Colors.RESET}")
-        remaining_hours = max(0, adjusted_week_goal - weekday_hours)
+        print(f"{Colors.BOLD}Week Total: {total_week_hours:.1f}h / {adjusted_week_goal:.1f}h ({week_progress*100:.1f}%) - Weekday goal{Colors.RESET}")
+        remaining_hours = max(0, adjusted_week_goal - total_week_hours)
         if remaining_hours < 0:
-            print(f"{Colors.GRAY}Goal exceeded by: {weekday_hours - adjusted_week_goal:.1f}h{Colors.RESET}")
+            print(f"{Colors.GRAY}Goal exceeded by: {total_week_hours - adjusted_week_goal:.1f}h{Colors.RESET}")
         
         # Show deficit information
         if weekly_deficit > 0:
@@ -361,12 +375,12 @@ def create_weekly_progress(daily_hours, daily_goal=4.0, config=None):
             else:
                 print(f"{Colors.GRAY}Deficit from previous week: {weekly_deficit:.1f}h (work >{daily_goal:.1f}h/day to reduce){Colors.RESET}")
         
-        if weekday_hours >= adjusted_week_goal:
+        if total_week_hours >= adjusted_week_goal:
             print(f"\033[38;5;28m🎉 Weekly goal achieved! Great work!{Colors.RESET}")
-        elif weekday_hours >= adjusted_week_goal * 0.8:
-            print(f"\033[38;5;40m💪 Almost there! {adjusted_week_goal - weekday_hours:.1f}h to go{Colors.RESET}")
+        elif total_week_hours >= adjusted_week_goal * 0.8:
+            print(f"\033[38;5;40m💪 Almost there! {adjusted_week_goal - total_week_hours:.1f}h to go{Colors.RESET}")
         else:
-            print(f"📈 Keep pushing! {adjusted_week_goal - weekday_hours:.1f}h remaining{Colors.RESET}")
+            print(f"📈 Keep pushing! {adjusted_week_goal - total_week_hours:.1f}h remaining{Colors.RESET}")
 
 def show_stats(daily_hours):
     """Show additional statistics"""
