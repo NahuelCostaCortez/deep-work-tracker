@@ -241,8 +241,9 @@ def calculate_weekly_deficit(daily_hours, current_week_start, daily_goal=4.0, co
     previous_week_start = current_week_start - timedelta(weeks=1)
     previous_week_hours = 0
     
-    # Calculate hours for the previous week (weekdays only)
-    for day_offset in range(5):  # Monday to Friday
+    # Calculate hours for the previous week across all seven days so weekend
+    # sessions that reduced the deficit are also counted when we look back
+    for day_offset in range(7):
         day = previous_week_start + timedelta(days=day_offset)
         if day in daily_hours:
             previous_week_hours += daily_hours[day]
