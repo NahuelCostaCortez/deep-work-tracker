@@ -210,6 +210,98 @@ class DeepWorkTimer:
         secs = int(seconds % 60)
         return f"{mins:02d}:{secs:02d}"
     
+    def calculate_weekly_deficit(self, daily_hours, current_week_start, daily_goal):
+        """Calculate the deficit from the previous week using stored weekly goals"""
+        if not daily_hours:
+            return 0
+        
+        # Check if deficit tracking was reset
+        if 'deficit_reset_date' in self.config:
+            try:
+                reset_date = datetime.fromisoformat(self.config['deficit_reset_date']).date()
+                if current_week_start <= reset_date:
+                    return 0
+            except (ValueError, TypeError):
+                pass
+        
+        # Get the actual goal for previous week
+        previous_week_start = current_week_start - timedelta(weeks=1)
+        
+        # Load weekly goals file
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        weekly_goals_file = os.path.join(script_dir, 'dwt_weekly_goals.json')
+        
+        try:
+            with open(weekly_goals_file, 'r') as f:
+                weekly_goals = json.load(f)
+            week_key = previous_week_start.isoformat()
+            previous_week_actual_goal = weekly_goals.get(week_key, daily_goal * 5)
+        except:
+            previous_week_actual_goal = daily_goal * 5
+        
+        # Calculate hours for the previous week
+        previous_week_hours = 0
+        for day_offset in range(7):
+            day = previous_week_start + timedelta(days=day_offset)
+            if day in daily_hours:
+                previous_week_hours += daily_hours[day]
+        
+        # Calculate the deficit
+        deficit = max(0, previous_week_actual_goal - previous_week_hours)
+        return deficit
+    
+    def get_today_hours_and_remaining(self):
+        """Calculate weekly worked hours and remaining hours to reach adjusted weekly goal"""
+        # Get the script directory to find the data file
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        data_file = os.path.join(script_dir, 'deep-work-data.json')
+        
+        # Load existing data
+        try:
+            with open(data_file, 'r') as f:
+                data = json.load(f)
+        except:
+            daily_goal = self.config.get('daily_goal', 4.0)
+            return 0.0, daily_goal * 5  # Return weekly goal as default
+        
+        # Get current week (Monday to Sunday)
+        today = datetime.now().date()
+        weekday = today.weekday()  # Monday = 0, Sunday = 6
+        week_start = today - timedelta(days=weekday)
+        
+        # Build daily_hours dictionary
+        daily_hours = {}
+        for session in data.get('sessions', []):
+            if session.get('completed', False):
+                start_time_str = session.get('startTime', '')
+                try:
+                    if start_time_str.endswith('Z'):
+                        start_time_str = start_time_str[:-1]
+                    session_date = datetime.fromisoformat(start_time_str).date()
+                    daily_hours[session_date] = daily_hours.get(session_date, 0) + session.get('duration', 0) / 60.0
+                except:
+                    continue
+        
+        # Calculate total hours worked this week
+        total_week_hours = 0
+        for day_offset in range(7):
+            day = week_start + timedelta(days=day_offset)
+            if day in daily_hours:
+                total_week_hours += daily_hours[day]
+        
+        daily_goal = self.config.get('daily_goal', 4.0)
+        base_week_goal = daily_goal * 5  # 5 weekdays
+        
+        # Calculate deficit from previous weeks
+        weekly_deficit = self.calculate_weekly_deficit(daily_hours, week_start, daily_goal)
+        
+        # Adjusted goal includes the deficit
+        adjusted_week_goal = base_week_goal + weekly_deficit
+        
+        remaining_hours = max(0, adjusted_week_goal - total_week_hours)
+        
+        return total_week_hours, remaining_hours
+    
     def check_keyboard_input(self):
         """Check for non-blocking keyboard input"""
         try:
@@ -242,7 +334,7 @@ class DeepWorkTimer:
                 elapsed = time.time() - start_time - paused_duration
                 remaining = max(0, total_seconds - elapsed)
                 if remaining <= 0:
-                    print(f"\r\033[KGreat job!")
+                    print(f"\r\033[2K\033[1A\r\033[2K\033[1A\r\033[2KGreat job!")
                     print()
                     # Play notification sound
                     try:
@@ -252,21 +344,76 @@ class DeepWorkTimer:
                         print('\a')  # Fallback beep
                     return True
 
-                # Display countdown
+                # Calculate remaining hours to reach adjusted weekly goal
+                hours_worked, remaining_hours = self.get_today_hours_and_remaining()
+                # Add the current session progress to the hours worked
+                current_session_hours = elapsed / 3600.0
+                updated_remaining_hours = max(0, remaining_hours - current_session_hours)
+                
+                # Format remaining hours
+                remaining_hours_int = int(updated_remaining_hours)
+                remaining_minutes = int((updated_remaining_hours - remaining_hours_int) * 60)
+                if remaining_hours_int > 0:
+                    hours_str = f"{remaining_hours_int}h {remaining_minutes}m"
+                else:
+                    hours_str = f"{remaining_minutes}m"
+                
+                # Display hours countdown bar
+                # Calculate adjusted weekly goal to match deep_work_tracker.py
+                daily_goal = self.config.get('daily_goal', 4.0)
+                base_week_goal = daily_goal * 5
+                
+                # Calculate deficit (same as in get_today_hours_and_remaining)
+                today = datetime.now().date()
+                week_start = today - timedelta(days=today.weekday())
+                
+                # Build daily_hours for deficit calculation
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                data_file = os.path.join(script_dir, 'deep-work-data.json')
+                try:
+                    with open(data_file, 'r') as f:
+                        data = json.load(f)
+                    daily_hours = {}
+                    for session in data.get('sessions', []):
+                        if session.get('completed', False):
+                            start_time_str = session.get('startTime', '')
+                            try:
+                                if start_time_str.endswith('Z'):
+                                    start_time_str = start_time_str[:-1]
+                                session_date = datetime.fromisoformat(start_time_str).date()
+                                daily_hours[session_date] = daily_hours.get(session_date, 0) + session.get('duration', 0) / 60.0
+                            except:
+                                continue
+                    weekly_deficit = self.calculate_weekly_deficit(daily_hours, week_start, daily_goal)
+                except:
+                    weekly_deficit = 0
+                
+                adjusted_week_goal = base_week_goal + weekly_deficit
+                hours_progress = min(1.0, (hours_worked + current_session_hours) / adjusted_week_goal if adjusted_week_goal > 0 else 1.0)
+                bar_length = 35
+                filled_hours = int(bar_length * hours_progress)
+                hours_bar = '█' * filled_hours + '░' * (bar_length - filled_hours)
+                
+                # Display session countdown
                 time_str = self.format_time(remaining)
                 progress = (total_seconds - remaining) / total_seconds
-                bar_length = 30
                 filled = int(bar_length * progress)
                 bar = '█' * filled + '░' * (bar_length - filled)
 
-                print(f"\r⏱️  {time_str} │{bar}│ [s]top [q]uit: ", end='', flush=True)
+                # Print three lines - move cursor up first, then print all lines
+                # Move cursor up 2 lines to overwrite previous output
+                print("\033[2A", end='', flush=True)
+                # Print all three lines
+                print(f"\r\033[2K⏳  {hours_str:>8} │{hours_bar}│")
+                print(f"\r\033[2K⏱️  {time_str:>9} │{bar}│")
+                print(f"\r\033[2K[s]top [q]uit: ", end='', flush=True)
 
                 # Check for keyboard input
                 import select
                 if select.select([sys.stdin], [], [], 0)[0]:
                     char = sys.stdin.read(1).lower()
                     if char == 's':
-                        print('\r\033[K', end='')  # Clear the timer line
+                        print('\r\033[2K\033[1A\r\033[2K\033[1A\r\033[2K', end='')  # Clear all three lines
                         print(f"⏸️  Session paused. Remaining time: {self.format_time(remaining)}")  # Print the pause message
                         print('\r\033[K')  # Clear the next line and move the cursor to the left
                         self.run_shortcut("stop deep")
@@ -276,7 +423,8 @@ class DeepWorkTimer:
 
                 time.sleep(0.1)
         except KeyboardInterrupt:
-            print(f"\n⏸️  Session paused at {self.format_time(remaining)}")
+            print(f"\r\033[2K\033[1A\r\033[2K\033[1A\r\033[2K")
+            print(f"⏸️  Session paused at {self.format_time(remaining)}")
             self.run_shortcut("stop deep")
             return False
         finally:
